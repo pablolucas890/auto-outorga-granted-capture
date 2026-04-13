@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "tsx src/index.ts",
     "lint:check": "eslint .",
     "lint": "eslint . --fix",
     "format:check": "prettier --check .",
@@ -21,8 +21,12 @@
   "description": "",
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@types/node": "^25.6.0",
+    "@types/nodemailer": "^8.0.0",
     "eslint": "^9.39.4",
     "globals": "^17.4.0",
-    "prettier": "^3.8.2"
+    "prettier": "^3.8.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }

@@ -27,12 +27,44 @@ const WAIT_TIME_BETWEEN_WORDS = 50;
 const COLOR_WHITE = '#FFFFFF';
 const COLOR_BLACK = '#000000';
 
-function escapeHtml(text) {
-  if (text == null) return '';
+interface Client {
+  name: string;
+  cnpj: string;
+  email: string | null;
+}
+
+interface Outorga {
+  title: string;
+  slug: string;
+  departmentName: string;
+}
+
+interface PublicationResponse {
+  content: string;
+}
+
+interface Publication {
+  title: string;
+  slug: string;
+  departmentName: string;
+}
+
+interface Act {
+  name: string;
+  children: Child[];
+}
+
+interface Child {
+  name: string;
+  children: Child[];
+  publications: Publication[];
+}
+
+function escapeHtml(text: string) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-async function printSentence(sentence, iterativeMode = false) {
+async function printSentence(sentence: string, iterativeMode = false) {
   if (!iterativeMode) {
     console.log(sentence.replace(/\n/g, '').replace(/\t/g, ''));
     return;
@@ -50,7 +82,7 @@ async function printSentence(sentence, iterativeMode = false) {
   console.clear();
 }
 
-async function sendEmail(client, title, paragraph, url, departmentName) {
+async function sendEmail(client: Client, title: string, paragraph: string, url: string, departmentName: string) {
   const {
     SMTP_HOST,
     SMTP_PORT,
@@ -131,9 +163,9 @@ async function sendEmail(client, title, paragraph, url, departmentName) {
             style="max-width:640px;background-color:${COLOR_WHITE};border-collapse:collapse;">
             <tr>
               <td style="background-color: ${COLOR_WHITE};padding:20px 24px;text-align:center;">
-                <a href="${escapeHtml(WEB_SITE_URL)}" target="_blank" rel="noopener noreferrer"
+                <a href="${escapeHtml(WEB_SITE_URL || '')}" target="_blank" rel="noopener noreferrer"
                   style="text-decoration:none;display:inline-block;">
-                  <img src="${escapeHtml(WEB_SITE_LOGO_URL)}" width="280"
+                  <img src="${escapeHtml(WEB_SITE_LOGO_URL || '')}" width="280"
                     style="max-width:100%;height:auto;display:block;margin:0 auto;border:0;outline:none;">
                 </a>
               </td>
@@ -229,7 +261,7 @@ async function main() {
     return;
   }
 
-  const acts = data?.items;
+  const acts = (data as { items: Act[] })?.items;
   if (!acts || acts?.length === 0 || !acts[0]?.children || acts[0]?.children?.length === 0) {
     console.log('No acts received');
     return;
@@ -245,10 +277,10 @@ async function main() {
     iterativeMode,
   );
 
-  let outorgas = [];
+  let outorgas: Outorga[] = [];
   for (const department of environment?.children || []) {
     const departmentName = department?.name;
-    const children = department?.children;
+    const children = department?.children as Child[];
     if (children && children?.length > 0) {
       for (const child of children) {
         const childPublications = child?.publications;
@@ -275,7 +307,7 @@ async function main() {
 
   for (const outorga of outorgas) {
     const outorgaURL = `https://do-api-web-search.doe.sp.gov.br/v2/publications/${outorga?.slug}`;
-    let data = null;
+    let data: PublicationResponse | null = null;
     try {
       const response = await fetch(outorgaURL, { headers: HEADERS });
       if (!response.ok) {
@@ -295,7 +327,7 @@ async function main() {
     const outorgaContent = data?.content;
     const $ = cheerio.load(outorgaContent);
     const paragraphs = $('p')
-      .map((index, element) => $(element).text())
+      .map((_, element) => $(element).text())
       .get();
 
     paragraphs.forEach(async paragraph => {
