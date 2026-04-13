@@ -1,9 +1,9 @@
 import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 import fs from 'fs';
-import nodemailer from 'nodemailer';
+import nodemailer, { SendMailOptions } from 'nodemailer';
 
-dotenv.config();
+dotenv.config({ debug: false, quiet: true });
 
 const HEADERS = {
   accept: 'application/json, text/plain, */*',
@@ -20,12 +20,14 @@ const ENDPOINT_URL = 'https://do-api-web-search.doe.sp.gov.br/v2/summary/structu
 const JOURNAL_ID = 'ca96256b-6ca1-407f-866e-567ef9430123';
 const SECTION_ID = '257b103f-1eb2-4f24-a170-4e553c7e4aac';
 const URL = `${ENDPOINT_URL}?JournalId=${JOURNAL_ID}&SectionId=${SECTION_ID}&Date=`;
-const CLIENTS =
+const CLIENTS: Client[] =
   JSON.parse(fs.existsSync('data/clients.json') ? fs.readFileSync('data/clients.json', 'utf8') : '[]') || [];
 const WAIT_TIME_BETWEEN_SENTENCES = 2000;
 const WAIT_TIME_BETWEEN_WORDS = 50;
 const COLOR_WHITE = '#FFFFFF';
 const COLOR_BLACK = '#000000';
+
+type GrantedResult = 'granted' | 'rejected' | 'unknown';
 
 interface Client {
   name: string;
@@ -60,8 +62,29 @@ interface Child {
   publications: Publication[];
 }
 
+interface Transport {
+  host: string;
+  port: number;
+  secure: boolean;
+  auth: {
+    user: string;
+    pass: string;
+  };
+}
+
 function escapeHtml(text: string) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getUserFriendlyResult(result: GrantedResult, justOneWord = false) {
+  switch (result) {
+    case 'granted':
+      return justOneWord ? 'Deferimento' : 'o deferimento';
+    case 'rejected':
+      return justOneWord ? 'Indeferimento' : 'o indeferimento';
+    case 'unknown':
+      return justOneWord ? 'Alteração' : 'uma alteração na situação';
+  }
 }
 
 async function printSentence(sentence: string, iterativeMode = false) {
@@ -82,7 +105,14 @@ async function printSentence(sentence: string, iterativeMode = false) {
   console.clear();
 }
 
-async function sendEmail(client: Client, title: string, paragraph: string, url: string, departmentName: string) {
+async function sendEmail(
+  client: Client,
+  title: string,
+  paragraph: string,
+  url: string,
+  departmentName: string,
+  result: GrantedResult,
+) {
   const {
     SMTP_HOST,
     SMTP_PORT,
@@ -115,7 +145,7 @@ async function sendEmail(client: Client, title: string, paragraph: string, url: 
     `Olá, ${client.name}!\n\n
     No acompanhamento que realizamos das publicações oficiais, identificamos uma atualização sobre o seu processo
     de outorga.\n\n
-    A publicação indica o deferimento do processo, e por isso já quisemos te avisar.\n\n
+    A publicação indica ${getUserFriendlyResult(result)} do processo, e por isso já quisemos te avisar.\n\n
     Órgão / seção: ${dept}\n\n
     Título da publicação:\n${title}\n\n
     Trecho do texto oficial:\n
@@ -174,8 +204,8 @@ async function sendEmail(client: Client, title: string, paragraph: string, url: 
               <td style="padding:24px 28px 32px 28px;font-family:'Open Sans',Arial;">
                 <p style="margin:0 0 1em 0;">Olá, ${escapeHtml(client.name)}!</p>
                 <p style="margin:0 0 1em 0;">No acompanhamento que realizamos das publicações oficiais, identificamos
-                  uma <strong>atualização</strong> sobre o seu processo de outorga.A publicação indica o deferimento do
-                  processo, e por isso já quisemos te avisar.</p>
+                  uma <strong>atualização</strong> sobre o seu processo de outorga. A publicação indica
+                  <strong>${getUserFriendlyResult(result)}</strong> do processo, e por isso já quisemos te avisar.</p>
                 <p style="margin:0 0 1em 0;"><strong>Órgão / seção:</strong> ${escapeHtml(dept)}</p>
                 <p style="margin:0 0 0.35em 0;"><strong>Título da publicação</strong></p>
                 <p style="margin:0 0 1em 0;">${safeTitle}</p>
@@ -210,26 +240,33 @@ async function sendEmail(client: Client, title: string, paragraph: string, url: 
     </html>
     `;
 
-  const mail = {
+  const mail: SendMailOptions = {
     from: SMTP_USER,
-    to: client.email,
+    to: client.email || '',
     replyTo: replyEmail,
-    fromName: footerName,
-    fromEmail: replyEmail,
     bcc: replyEmail,
-    subject: 'Outorga Deferida',
+    subject: `${getUserFriendlyResult(result, true)} de outorga`,
     text: textBody,
     html: html.trim(),
   };
 
-  const smtpTransport = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
+  const transportOptions: Transport = {
+    host: SMTP_HOST || '',
+    port: SMTP_PORT ? parseInt(SMTP_PORT) : 0,
     secure: true,
-    auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
-  });
+    auth: { user: SMTP_USER || '', pass: SMTP_PASSWORD || '' },
+  };
+  const smtpTransport = nodemailer.createTransport(transportOptions);
   await smtpTransport.sendMail(mail);
-  console.log(`\tEMAIL ENVIADO PARA O CLIENTE [${client.email}]\n\n`);
+}
+
+function determineGrantedResult(paragraph: string): GrantedResult {
+  if (paragraph.includes('Fica outorgada')) {
+    return 'granted';
+  } else if (paragraph.includes('Fica revogada')) {
+    return 'rejected';
+  }
+  return 'unknown';
 }
 
 async function main() {
@@ -242,7 +279,7 @@ async function main() {
   const today = date.toISOString().split('T')[0]?.replace(/-0/g, '-');
 
   await printSentence('\tSISTEMA DE MONITORAMENTO DE OUTORGA DO MEIO AMBIENTE\n\n', iterativeMode);
-  await printSentence(`\tBUSCANDO OUTORGA DO DIA ${today}\n\n`, iterativeMode);
+  await printSentence(`\tBUSCANDO OUTORGA DO DIA [${today}]\n\n`, iterativeMode);
 
   try {
     const response = await fetch(URL + today, { headers: HEADERS });
@@ -330,25 +367,34 @@ async function main() {
       .map((_, element) => $(element).text())
       .get();
 
-    paragraphs.forEach(async paragraph => {
+    for (const paragraph of paragraphs) {
       const client = CLIENTS.filter(client => client.cnpj).find(client => paragraph.includes(client.cnpj));
       if (client) {
-        if (!client.name) client.name = 'Amigo(a)';
-        if (!client.email) {
+        if (!client?.name) client.name = 'Amigo(a)';
+        if (!client?.email) {
           console.error(`\tCLIENTE [${client.cnpj}] não possui e-mail cadastrado`);
           return;
         }
+
+        const result = determineGrantedResult(paragraph);
+        await printSentence(`\tRESULTADO DA OUTORGA: [${result.toUpperCase()}]\n\n`, iterativeMode);
 
         const webUrl = `https://doe.sp.gov.br/${outorga?.slug}`;
         await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
         if (!noSendEmail) {
           await printSentence(`\tDISPARANDO EMAIL PARA O CLIENTE [${client.email}]\n\n`, iterativeMode);
-          await sendEmail(client, outorga?.title, paragraph, webUrl, outorga?.departmentName);
+          try {
+            await sendEmail(client, outorga?.title, paragraph, webUrl, outorga?.departmentName, result);
+          } catch (error) {
+            console.log('Error sending email:', error);
+            return;
+          }
+          await printSentence(`\tEMAIL ENVIADO PARA O CLIENTE [${client.email}]\n\n`, iterativeMode);
         } else {
           await printSentence(paragraph, iterativeMode);
         }
       }
-    });
+    }
   }
 }
 
