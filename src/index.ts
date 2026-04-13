@@ -125,6 +125,7 @@ async function sendEmail(
     WEB_SITE_LOGO_URL,
     COLOR_PRIMARY,
     COLOR_SECONDARY,
+    BCC_EMAIL,
   } = process.env;
   const dept = departmentName?.trim() || 'Meio Ambiente';
   const safeTitle = escapeHtml(title);
@@ -244,7 +245,7 @@ async function sendEmail(
     from: SMTP_USER,
     to: client.email || '',
     replyTo: replyEmail,
-    bcc: replyEmail,
+    bcc: BCC_EMAIL?.trim() || '',
     subject: `${getUserFriendlyResult(result, true)} de outorga`,
     text: textBody,
     html: html.trim(),
