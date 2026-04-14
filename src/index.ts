@@ -32,6 +32,7 @@ type GrantedResult = 'granted' | 'rejected' | 'unknown';
 interface Client {
   name: string;
   cnpj: string;
+  cpf: string;
   email: string | null;
 }
 
@@ -369,11 +370,13 @@ async function main() {
       .get();
 
     for (const paragraph of paragraphs) {
-      const client = CLIENTS.filter(client => client.cnpj).find(client => paragraph.includes(client.cnpj));
+      const client = CLIENTS.filter(client => client.cnpj || client.cpf).find(
+        client => paragraph.includes(client.cnpj) || paragraph.includes(client.cpf),
+      );
       if (client) {
         if (!client?.name) client.name = 'Amigo(a)';
         if (!client?.email) {
-          console.error(`\tCLIENTE [${client.cnpj}] não possui e-mail cadastrado`);
+          console.error(`\tCLIENTE [${client.cnpj}/${client.cpf}] não possui e-mail cadastrado`);
           return;
         }
 
