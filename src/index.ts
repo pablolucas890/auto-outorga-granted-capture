@@ -27,6 +27,8 @@ const WAIT_TIME_BETWEEN_WORDS = 50;
 const COLOR_WHITE = '#FFFFFF';
 const COLOR_BLACK = '#000000';
 const CNPJ_REGEX = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
+const LIMIT_OF_DISPATCH_EMAILS = 5;
+const TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S = 48;
 
 type GrantedResult = 'granted' | 'rejected' | 'unknown';
 type EmailType = 'client' | 'lead';
@@ -86,13 +88,27 @@ function escapeHtml(text: string) {
 }
 
 function getUserFriendlyResult(result: GrantedResult, justOneWord = false) {
+  const justOneWordGrantedArray = ['Deferimento', 'Autorização', 'Aprovação', 'Concessão'];
+  const justOneWordRejectedArray = ['Indeferimento', 'Revogação', 'Negação', 'Recusa'];
+  const justOneWordUnknownArray = ['Alteração', 'Modificação', 'Atualização', 'Informação'];
+
+  const sentenceGrantedArray = ['o deferimento', 'a autorização', 'a aprovação', 'a concessão'];
+  const sentenceRejectedArray = ['o indeferimento', 'a revogação', 'a negação', 'a recusa'];
+  const sentenceUnknownArray = ['uma alteração', 'uma modificação', 'uma atualização', 'uma informação'];
+
+  const situationArray = ['na situação', 'no estado', 'na aprovação', 'na concessão'];
+
+  const random = Math.floor(Math.random() * 4);
+
   switch (result) {
     case 'granted':
-      return justOneWord ? 'Deferimento' : 'o deferimento';
+      return justOneWord ? justOneWordGrantedArray[random] : sentenceGrantedArray[random];
     case 'rejected':
-      return justOneWord ? 'Indeferimento' : 'o indeferimento';
+      return justOneWord ? justOneWordRejectedArray[random] : sentenceRejectedArray[random];
     case 'unknown':
-      return justOneWord ? 'Alteração' : 'uma alteração na situação';
+      return justOneWord
+        ? justOneWordUnknownArray[random]
+        : sentenceUnknownArray[random] + ' ' + situationArray[random];
   }
 }
 
@@ -144,13 +160,17 @@ async function sendEmail(
   const replyEmail = CONTACT_EMAIL?.trim() || SMTP_USER?.trim() || '';
   const footerName = CONTACT_NAME?.trim();
   const footerPhone = CONTACT_PHONE?.trim();
+
+  const finalGreetingRandom = Math.floor(Math.random() * 3);
+  const finalGreeting =
+    finalGreetingRandom === 0 ? 'Com carinho,' : finalGreetingRandom === 1 ? 'Atenciosamente,' : 'Abraços,';
   const textFooter = `
-    Com carinho,
+    ${finalGreeting}
     ${footerName ? footerName : ''}
     ${footerPhone ? `Contato: ${footerPhone}` : ''}
     ${replyEmail ? `E-mail: ${replyEmail}` : ''}
   `;
-  const htmlFooter = `<p style="margin:1.5em 0 0 0;">Com carinho,</p>
+  const htmlFooter = `<p style="margin:1.5em 0 0 0;">${finalGreeting}</p>
     <div style="margin-top:1em;padding-top:1em;border-top:1px solid ${COLOR_SECONDARY};font-size:0.95em;color:${COLOR_BLACK};">
     ${footerName ? `<p style="margin:0.35em 0;">${escapeHtml(footerName)}</p>` : ''}
     ${footerPhone ? `<p style="margin:0.35em 0;">Contato: ${escapeHtml(footerPhone)}</p>` : ''}
@@ -345,12 +365,19 @@ async function sendEmail(
     return;
   }
 
+  const subjectRandom = Math.floor(Math.random() * 3);
+  const subject =
+    subjectRandom === 0
+      ? `${getUserFriendlyResult(result, true)} de outorga`
+      : subjectRandom === 1
+        ? `[${getUserFriendlyResult(result, true)}] de outorga`
+        : `${getUserFriendlyResult(result, true)} de outorga - ${dept}`;
   const mail: SendMailOptions = {
     from: SMTP_USER,
     to: client.email || '',
     replyTo: replyEmail,
     bcc: BCC_EMAIL?.trim() || '',
-    subject: `${getUserFriendlyResult(result, true)} de outorga`,
+    subject,
     text,
     html,
   };
@@ -379,6 +406,7 @@ function determineGrantedResult(paragraph: string): GrantedResult {
 }
 
 async function main() {
+  let dispatchEmailCount = 0;
   let data = null;
   let companiesArray: Company[] = [];
 
@@ -507,12 +535,17 @@ async function main() {
         const webUrl = `https://doe.sp.gov.br/${outorga?.slug}`;
         await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
         if (!noSendEmail) {
+          if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
+            await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
+            break;
+          }
           await printSentence(
             `\tDISPARANDO EMAIL PARA O CLIENTE [${client.name}] [${client.email}]\n\n`,
             iterativeMode,
           );
           try {
             await sendEmail(client, outorga?.title, paragraph, webUrl, outorga?.departmentName, result, 'client');
+            dispatchEmailCount++;
           } catch (error) {
             console.log('Error sending email:', error);
             continue;
@@ -561,6 +594,10 @@ async function main() {
           const grantedResult = determineGrantedResult(company.paragraph);
           const lead: ClientOrLead = { name: legalName, cnpj: company.cnpj, cpf: '', email: email };
           if (!noSendEmail) {
+            if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
+              await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
+              break;
+            }
             await printSentence(`\tDISPARANDO EMAIL PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
             await sendEmail(
               lead,
@@ -571,6 +608,8 @@ async function main() {
               grantedResult,
               'lead',
             );
+            dispatchEmailCount++;
+            await new Promise(resolve => setTimeout(resolve, TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S * 1000));
           } else {
             await printSentence(`\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
           }
