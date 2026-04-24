@@ -253,8 +253,93 @@ async function sendEmail(
     </html>
     `;
   } else if (emailType === 'lead') {
-    text = 'Olá,';
-    html = '<h1>Olá,</h1>';
+    text =
+      `Olá, ${client.name}!\n\n
+    Esperamos que esteja tudo bem por aí.\n\n
+    No monitoramento que realizamos das publicações oficiais, identificamos uma atualização envolvendo processo
+    de outorga relacionado à sua empresa.\n\n
+    A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação
+    de forma objetiva para apoiar sua leitura inicial.\n\n
+    Órgão / seção: ${dept}\n\n
+    Título da publicação:\n${title}\n\n
+    Trecho do texto oficial:\n
+    ... ${paragraph} ...\n\n
+    Link da publicação: ${url}\n\n
+    Nosso contato aqui é consultivo: sabemos que muitas empresas já possuem parceiros técnicos e respeitamos isso.
+    Quando fizer sentido para vocês, podemos atuar de forma complementar na leitura de publicações, interpretação
+    prática dos pontos críticos e organização dos próximos passos.\n\n
+    Se quiser, você também pode conhecer melhor nossa forma de trabalho e nossa carta de serviços no site:
+    ${WEB_SITE_URL}\n\n
+    Caso seja útil, seguimos à disposição para uma conversa sem compromisso.
+    ` + textFooter;
+
+    html = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap"
+      rel="stylesheet">
+    </head>
+    <body style="margin:0;padding:0;background-color:${COLOR_PRIMARY};font-family:'Open Sans',Arial;line-height:1.55;color:${COLOR_BLACK};">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+      style="background-color:${COLOR_SECONDARY};border-collapse:collapse;">
+      <tr>
+        <td align="center" style="padding:0;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+            style="max-width:640px;background-color:${COLOR_WHITE};border-collapse:collapse;">
+            <tr>
+              <td style="background-color: ${COLOR_WHITE};padding:20px 24px;text-align:center;">
+                <a href="${escapeHtml(WEB_SITE_URL || '')}" target="_blank" rel="noopener noreferrer"
+                  style="text-decoration:none;display:inline-block;">
+                  <img src="${escapeHtml(WEB_SITE_LOGO_URL || '')}" width="280"
+                    style="max-width:100%;height:auto;display:block;margin:0 auto;border:0;outline:none;">
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 28px 32px 28px;font-family:'Open Sans',Arial;">
+                <p style="margin:0 0 1em 0;">Olá, ${escapeHtml(client.name)}!</p>
+                <p style="margin:0 0 1em 0;">Esperamos que esteja tudo bem por aí.</p>
+                <p style="margin:0 0 1em 0;">No monitoramento que realizamos das publicações oficiais, identificamos
+                  uma atualização envolvendo processo de outorga relacionado à sua empresa.</p>
+                <p style="margin:0 0 1em 0;">A publicação indica
+                  <strong>${getUserFriendlyResult(result)}</strong> do processo, então decidimos compartilhar essa
+                  informação de forma objetiva para apoiar sua leitura inicial.</p>
+                <p style="margin:0 0 1em 0;"><strong>Órgão / seção:</strong> ${escapeHtml(dept)}</p>
+                <p style="margin:0 0 0.35em 0;"><strong>Título da publicação</strong></p>
+                <p style="margin:0 0 1em 0;">${safeTitle}</p>
+                <p style="margin:0 0 0.5em 0;"><strong>Trecho do texto oficial</strong>:</p>
+                <blockquote style="margin:0 0 1em 0;padding:1em 1.25em;border-left:4px solid ${COLOR_PRIMARY};background-color:${COLOR_SECONDARY};font-style:italic;color:${COLOR_BLACK};">
+                  <p style="margin:0;font-family:'Open Sans',Arial;">… ${safeParagraph} …</p>
+                </blockquote>
+                <p style="margin:0 0 1em 0;">Para ler a <strong>íntegra</strong> da publicação no portal oficial do
+                  Diário Oficial Eletrônico, use o link abaixo.</p>
+                <p style="margin:0 0 1em 0;"><a href="${safeUrl}"
+                  style="color:${COLOR_PRIMARY};font-weight:600;word-break:break-all;">${safeUrl}</a></p>
+                <p style="margin:0 0 1em 0;">Nosso contato aqui é consultivo: sabemos que muitas empresas já possuem
+                  parceiros técnicos e respeitamos isso. Quando fizer sentido para vocês, podemos atuar de forma
+                  complementar na leitura de publicações, interpretação prática dos pontos críticos e organização
+                  dos próximos passos.</p>
+                <p style="margin:0 0 1em 0;">Se quiser, você também pode conhecer melhor nossa forma de trabalho e
+                  nossa carta de serviços no site:
+                  <a href="${escapeHtml(WEB_SITE_URL || '')}" target="_blank" rel="noopener noreferrer"
+                    style="color:${COLOR_PRIMARY};font-weight:600;">${escapeHtml(WEB_SITE_URL || '')}</a>
+                </p>
+                <p style="margin:0 0 1em 0;">Caso seja útil, seguimos à disposição para uma conversa sem compromisso.</p>
+                ${htmlFooter}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    </body>
+    </html>
+    `;
   } else {
     console.error('Invalid email type');
     return;
