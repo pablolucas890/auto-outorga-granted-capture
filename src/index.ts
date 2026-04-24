@@ -571,7 +571,6 @@ async function main() {
               grantedResult,
               'lead',
             );
-            return;
           } else {
             await printSentence(`\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
           }
