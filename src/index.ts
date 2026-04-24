@@ -585,8 +585,7 @@ async function main() {
           continue;
         }
         const $ = cheerio.load(content);
-        // const email = $('span[itemprop="email"]').text();
-        const email = process.env.BCC_EMAIL?.trim() || ''; // TODO: Change to the lead email
+        const email = $('span[itemprop="email"]').text();
         const legalName = $('span[itemprop="legalName"]').text();
         const isClient = CLIENTS.find(client => client.cnpj === company.cnpj || client.email === email);
 
