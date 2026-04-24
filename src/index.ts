@@ -20,7 +20,7 @@ const ENDPOINT_URL = 'https://do-api-web-search.doe.sp.gov.br/v2/summary/structu
 const JOURNAL_ID = 'ca96256b-6ca1-407f-866e-567ef9430123';
 const SECTION_ID = '257b103f-1eb2-4f24-a170-4e553c7e4aac';
 const URL = `${ENDPOINT_URL}?JournalId=${JOURNAL_ID}&SectionId=${SECTION_ID}&Date=`;
-const CLIENTS: Client[] =
+const CLIENTS: ClientOrLead[] =
   JSON.parse(fs.existsSync('data/clients.json') ? fs.readFileSync('data/clients.json', 'utf8') : '[]') || [];
 const WAIT_TIME_BETWEEN_SENTENCES = 2000;
 const WAIT_TIME_BETWEEN_WORDS = 50;
@@ -29,13 +29,15 @@ const COLOR_BLACK = '#000000';
 const CNPJ_REGEX = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
 
 type GrantedResult = 'granted' | 'rejected' | 'unknown';
+type EmailType = 'client' | 'lead';
 
 interface Company {
   cnpj: string;
   paragraph: string;
+  outorga: Outorga;
 }
 
-interface Client {
+interface ClientOrLead {
   name: string;
   cnpj: string;
   cpf: string;
@@ -113,12 +115,13 @@ async function printSentence(sentence: string, iterativeMode = false) {
 }
 
 async function sendEmail(
-  client: Client,
+  client: ClientOrLead,
   title: string,
   paragraph: string,
   url: string,
   departmentName: string,
   result: GrantedResult,
+  emailType: EmailType,
 ) {
   const {
     SMTP_HOST,
@@ -141,16 +144,30 @@ async function sendEmail(
   const replyEmail = CONTACT_EMAIL?.trim() || SMTP_USER?.trim() || '';
   const footerName = CONTACT_NAME?.trim();
   const footerPhone = CONTACT_PHONE?.trim();
-
   const textFooter = `
     Com carinho,
     ${footerName ? footerName : ''}
     ${footerPhone ? `Contato: ${footerPhone}` : ''}
     ${replyEmail ? `E-mail: ${replyEmail}` : ''}
   `;
+  const htmlFooter = `<p style="margin:1.5em 0 0 0;">Com carinho,</p>
+    <div style="margin-top:1em;padding-top:1em;border-top:1px solid ${COLOR_SECONDARY};font-size:0.95em;color:${COLOR_BLACK};">
+    ${footerName ? `<p style="margin:0.35em 0;">${escapeHtml(footerName)}</p>` : ''}
+    ${footerPhone ? `<p style="margin:0.35em 0;">Contato: ${escapeHtml(footerPhone)}</p>` : ''}
+    ${
+      replyEmail
+        ? `<p style="margin:0.35em 0;">E-mail: <a href="mailto:${escapeHtml(replyEmail)}" style="color:${COLOR_PRIMARY};">${escapeHtml(replyEmail)}</a></p>`
+        : ''
+    }
+    </div>
+    `;
 
-  const textBody =
-    `Olá, ${client.name}!\n\n
+  let text = '';
+  let html = '';
+
+  if (emailType === 'client') {
+    text =
+      `Olá, ${client.name}!\n\n
     No acompanhamento que realizamos das publicações oficiais, identificamos uma atualização sobre o seu processo
     de outorga.\n\n
     A publicação indica ${getUserFriendlyResult(result)} do processo, e por isso já quisemos te avisar.\n\n
@@ -169,19 +186,7 @@ async function sendEmail(
     Seguimos à disposição para apoiar você com proximidade, clareza e compromisso em cada etapa do processo.
     ` + textFooter;
 
-  const htmlFooterBlocks = `<p style="margin:1.5em 0 0 0;">Com carinho,</p>
-    <div style="margin-top:1em;padding-top:1em;border-top:1px solid ${COLOR_SECONDARY};font-size:0.95em;color:${COLOR_BLACK};">
-    ${footerName ? `<p style="margin:0.35em 0;">${escapeHtml(footerName)}</p>` : ''}
-    ${footerPhone ? `<p style="margin:0.35em 0;">Contato: ${escapeHtml(footerPhone)}</p>` : ''}
-    ${
-      replyEmail
-        ? `<p style="margin:0.35em 0;">E-mail: <a href="mailto:${escapeHtml(replyEmail)}" style="color:${COLOR_PRIMARY};">${escapeHtml(replyEmail)}</a></p>`
-        : ''
-    }
-    </div>
-    `;
-
-  const html = `
+    html = `
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
@@ -237,7 +242,7 @@ async function sendEmail(
                 </p>
                 <p style="margin:0 0 1em 0;">Seguimos à disposição para apoiar você com proximidade, clareza e compromisso
                   em cada etapa do processo.</p>
-                ${htmlFooterBlocks}
+                ${htmlFooter}
               </td>
             </tr>
           </table>
@@ -247,6 +252,13 @@ async function sendEmail(
     </body>
     </html>
     `;
+  } else if (emailType === 'lead') {
+    text = 'Olá,';
+    html = '<h1>Olá,</h1>';
+  } else {
+    console.error('Invalid email type');
+    return;
+  }
 
   const mail: SendMailOptions = {
     from: SMTP_USER,
@@ -254,8 +266,8 @@ async function sendEmail(
     replyTo: replyEmail,
     bcc: BCC_EMAIL?.trim() || '',
     subject: `${getUserFriendlyResult(result, true)} de outorga`,
-    text: textBody,
-    html: html.trim(),
+    text,
+    html,
   };
 
   const transportOptions: Transport = {
@@ -264,8 +276,12 @@ async function sendEmail(
     secure: true,
     auth: { user: SMTP_USER || '', pass: SMTP_PASSWORD || '' },
   };
-  const smtpTransport = nodemailer.createTransport(transportOptions);
-  await smtpTransport.sendMail(mail);
+  try {
+    const smtpTransport = nodemailer.createTransport(transportOptions);
+    await smtpTransport.sendMail(mail);
+  } catch (error) {
+    console.log('Error sending email:', error);
+  }
 }
 
 function determineGrantedResult(paragraph: string): GrantedResult {
@@ -358,12 +374,13 @@ async function main() {
     try {
       const response = await fetch(outorgaURL, { headers: HEADERS });
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.log(`HTTP error! status: ${response.status}`);
+        continue;
       }
       data = await response.json();
     } catch (error) {
       console.log('Error:', error);
-      return;
+      continue;
     }
 
     if (!data || !data?.content) {
@@ -384,7 +401,7 @@ async function main() {
           const cnpj = word.match(CNPJ_REGEX);
           if (cnpj) {
             if (!companiesArray.find(company => company.cnpj === cnpj[0])) {
-              companiesArray.push({ cnpj: cnpj[0], paragraph: paragraph });
+              companiesArray.push({ cnpj: cnpj[0], paragraph: paragraph, outorga: outorga });
             }
           }
         }
@@ -396,7 +413,7 @@ async function main() {
         if (!client?.name) client.name = 'Amigo(a)';
         if (!client?.email) {
           console.error(`\tCLIENTE [${client.cnpj}/${client.cpf}] não possui e-mail cadastrado`);
-          return;
+          continue;
         }
 
         const result = determineGrantedResult(paragraph);
@@ -405,20 +422,23 @@ async function main() {
         const webUrl = `https://doe.sp.gov.br/${outorga?.slug}`;
         await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
         if (!noSendEmail) {
-          await printSentence(`\tDISPARANDO EMAIL PARA O CLIENTE [${client.email}]\n\n`, iterativeMode);
+          await printSentence(
+            `\tDISPARANDO EMAIL PARA O CLIENTE [${client.name}] [${client.email}]\n\n`,
+            iterativeMode,
+          );
           try {
-            await sendEmail(client, outorga?.title, paragraph, webUrl, outorga?.departmentName, result);
+            await sendEmail(client, outorga?.title, paragraph, webUrl, outorga?.departmentName, result, 'client');
           } catch (error) {
             console.log('Error sending email:', error);
-            return;
+            continue;
           }
-          await printSentence(`\tEMAIL ENVIADO PARA O CLIENTE [${client.email}]\n\n`, iterativeMode);
         } else {
           await printSentence(paragraph, iterativeMode);
         }
       }
     }
   }
+
   for (const company of companiesArray) {
     const getDataFromCnpjOrCpfUrl = 'https://www.procuroacho.com';
     const searchUrl = getDataFromCnpjOrCpfUrl + '/company-search?q=';
@@ -426,7 +446,7 @@ async function main() {
     try {
       const response = await fetch(searchUrl + company.cnpj, { method: 'GET', headers: HEADERS });
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        continue;
       }
       data = await response.text();
 
@@ -440,23 +460,40 @@ async function main() {
         try {
           const response = await fetch(companyUrl, { method: 'GET', headers: HEADERS });
           if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            continue;
           }
           content = await response.text();
         } catch (error) {
-          console.log('Error:', error);
-          return;
+          continue;
         }
         const $ = cheerio.load(content);
-        const email = $('span[itemprop="email"]').text();
+        // const email = $('span[itemprop="email"]').text();
+        const email = process.env.BCC_EMAIL?.trim() || ''; // TODO: Change to the lead email
         const legalName = $('span[itemprop="legalName"]').text();
-        if (email && legalName) {
+        const isClient = CLIENTS.find(client => client.cnpj === company.cnpj || client.email === email);
+
+        if (email && legalName && !isClient) {
           const grantedResult = determineGrantedResult(company.paragraph);
+          const lead: ClientOrLead = { name: legalName, cnpj: company.cnpj, cpf: '', email: email };
+          if (!noSendEmail) {
+            await printSentence(`\tDISPARANDO EMAIL PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
+            await sendEmail(
+              lead,
+              company.outorga.title,
+              company.paragraph,
+              company.outorga.slug,
+              company.outorga.departmentName,
+              grantedResult,
+              'lead',
+            );
+            return;
+          } else {
+            await printSentence(`\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
+          }
         }
       }
     } catch (error) {
-      console.log('Error:', error);
-      return;
+      continue;
     }
   }
 }
