@@ -26,8 +26,14 @@ const WAIT_TIME_BETWEEN_SENTENCES = 2000;
 const WAIT_TIME_BETWEEN_WORDS = 50;
 const COLOR_WHITE = '#FFFFFF';
 const COLOR_BLACK = '#000000';
+const CNPJ_REGEX = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
 
 type GrantedResult = 'granted' | 'rejected' | 'unknown';
+
+interface Company {
+  cnpj: string;
+  paragraph: string;
+}
 
 interface Client {
   name: string;
@@ -273,6 +279,8 @@ function determineGrantedResult(paragraph: string): GrantedResult {
 
 async function main() {
   let data = null;
+  let companiesArray: Company[] = [];
+
   const args = process.argv.slice(2);
   const iterativeMode = args.some(arg => arg === 'iterative');
   const noSendEmail = args.some(arg => arg === 'no-send-email');
@@ -370,6 +378,17 @@ async function main() {
       .get();
 
     for (const paragraph of paragraphs) {
+      for (const firstSentenceSplited of paragraph.split(' ')) {
+        for (const secondeSentenceSplited of firstSentenceSplited.split(' ')) {
+          const word = secondeSentenceSplited.replace(',', '').trim();
+          const cnpj = word.match(CNPJ_REGEX);
+          if (cnpj) {
+            if (!companiesArray.find(company => company.cnpj === cnpj[0])) {
+              companiesArray.push({ cnpj: cnpj[0], paragraph: paragraph });
+            }
+          }
+        }
+      }
       const client = CLIENTS.filter(client => client.cnpj || client.cpf).find(
         client => paragraph.includes(client.cnpj) || paragraph.includes(client.cpf),
       );
@@ -398,6 +417,46 @@ async function main() {
           await printSentence(paragraph, iterativeMode);
         }
       }
+    }
+  }
+  for (const company of companiesArray) {
+    const getDataFromCnpjOrCpfUrl = 'https://www.procuroacho.com';
+    const searchUrl = getDataFromCnpjOrCpfUrl + '/company-search?q=';
+    let data: string | null = null;
+    try {
+      const response = await fetch(searchUrl + company.cnpj, { method: 'GET', headers: HEADERS });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      data = await response.text();
+
+      const $ = cheerio.load(data);
+      const anchors = $('a');
+
+      for (const anchor of anchors) {
+        const href = anchor.attribs.href;
+        const companyUrl = getDataFromCnpjOrCpfUrl + href;
+        let content: string | null = null;
+        try {
+          const response = await fetch(companyUrl, { method: 'GET', headers: HEADERS });
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          content = await response.text();
+        } catch (error) {
+          console.log('Error:', error);
+          return;
+        }
+        const $ = cheerio.load(content);
+        const email = $('span[itemprop="email"]').text();
+        const legalName = $('span[itemprop="legalName"]').text();
+        if (email && legalName) {
+          const grantedResult = determineGrantedResult(company.paragraph);
+        }
+      }
+    } catch (error) {
+      console.log('Error:', error);
+      return;
     }
   }
 }
