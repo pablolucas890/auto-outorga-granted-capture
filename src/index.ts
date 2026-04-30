@@ -67,6 +67,10 @@ interface Transport {
   host: string;
   port: number;
   secure: boolean;
+  logger?: boolean;
+  debug?: boolean;
+  name?: string;
+  from?: string;
   auth: {
     user: string;
     pass: string;
@@ -257,6 +261,10 @@ async function sendEmail(
     port: SMTP_PORT ? parseInt(SMTP_PORT) : 0,
     secure: true,
     auth: { user: SMTP_USER || '', pass: SMTP_PASSWORD || '' },
+    logger: false,
+    debug: false,
+    name: WEB_SITE_URL?.trim()?.split('//')[1]?.split('/')[0] || '',
+    from: `"${CONTACT_NAME?.trim()}" <${CONTACT_EMAIL?.trim()}>`,
   };
   const smtpTransport = nodemailer.createTransport(transportOptions);
   await smtpTransport.sendMail(mail);
