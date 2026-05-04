@@ -379,11 +379,13 @@ async function sendEmail(
       : subjectRandom === 1
         ? `[${getUserFriendlyResult(result, true)}] de outorga`
         : `${getUserFriendlyResult(result, true)} de outorga - ${dept}`;
+  const bccEmail = BCC_EMAIL?.trim() || '';
+  const bcc = emailType === 'client' ? [bccEmail, replyEmail] : [bccEmail];
   const mail: SendMailOptions = {
     from: SMTP_USER,
     to: client.email || '',
     replyTo: replyEmail,
-    bcc: BCC_EMAIL?.trim() || '',
+    bcc,
     subject,
     text,
     html,
