@@ -22,6 +22,9 @@ const SECTION_ID = '257b103f-1eb2-4f24-a170-4e553c7e4aac';
 const URL = `${ENDPOINT_URL}?JournalId=${JOURNAL_ID}&SectionId=${SECTION_ID}&Date=`;
 const CLIENTS: ClientOrLead[] =
   JSON.parse(fs.existsSync('data/clients.json') ? fs.readFileSync('data/clients.json', 'utf8') : '[]') || [];
+const SELECTED_CITIES: string[] = fs.existsSync('data/selected-cities.txt')
+  ? fs.readFileSync('data/selected-cities.txt', 'utf8').split('\n')
+  : [];
 const WAIT_TIME_BETWEEN_SENTENCES = 2000;
 const WAIT_TIME_BETWEEN_WORDS = 50;
 const COLOR_WHITE = '#FFFFFF';
@@ -85,6 +88,10 @@ interface Transport {
 
 function escapeHtml(text: string) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function removeAccents(text: string): string {
+  return String(text).normalize('NFD').replace(/\p{M}/gu, '');
 }
 
 function getUserFriendlyResult(result: GrantedResult, justOneWord = false) {
@@ -587,9 +594,12 @@ async function main() {
         const $ = cheerio.load(content);
         const email = $('span[itemprop="email"]').text();
         const legalName = $('span[itemprop="legalName"]').text();
+        const addressLocality = $('span[itemprop="addressLocality"]').text();
+        const localityNorm = removeAccents(addressLocality ?? '').toLowerCase();
+        const isSelectedCity = SELECTED_CITIES.some(city => localityNorm === removeAccents(city).toLowerCase());
         const isClient = CLIENTS.find(client => client.cnpj === company.cnpj || client.email === email);
 
-        if (email && legalName && !isClient) {
+        if (email && legalName && !isClient && localityNorm && isSelectedCity) {
           const grantedResult = determineGrantedResult(company.paragraph);
           const lead: ClientOrLead = { name: legalName, cnpj: company.cnpj, cpf: '', email: email };
           if (!noSendEmail) {
@@ -597,7 +607,10 @@ async function main() {
               await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
               break;
             }
-            await printSentence(`\tDISPARANDO EMAIL PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
+            await printSentence(
+              `\tDISPARANDO EMAIL PARA A EMPRESA [${legalName}] [${email}] [${addressLocality}]\n\n`,
+              iterativeMode,
+            );
             await sendEmail(
               lead,
               company.outorga.title,
@@ -610,7 +623,10 @@ async function main() {
             dispatchEmailCount++;
             await new Promise(resolve => setTimeout(resolve, TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S * 1000));
           } else {
-            await printSentence(`\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}]\n\n`, iterativeMode);
+            await printSentence(
+              `\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}] [${addressLocality}]\n\n`,
+              iterativeMode,
+            );
           }
         }
       }
