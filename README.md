@@ -1,5 +1,12 @@
 # auto-outorga-granted-capture
 
+## Environment
+
+- `node`
+- `openssl`
+- `qpdf`
+- `pdftotext`
+
 ## Development
 
 - `cp .env.example .env` And edit
