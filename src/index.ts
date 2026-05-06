@@ -20,12 +20,23 @@ async function main() {
   let doPublications: Publication[] = [];
 
   const args = process.argv.slice(2);
+  const hasHelp = args.some(arg => arg === 'help');
   const iterativeMode = args.some(arg => arg === 'iterative');
   const noSendEmail = args.some(arg => arg === 'no-send-email');
   const dateParam = args.find(arg => arg.startsWith('date='))?.split('=')[1];
   const date = dateParam ? new Date(dateParam) : new Date();
   const todayDomg = date.toISOString().split('T')[0];
   const today = todayDomg?.replace(/-0/g, '-');
+
+  if (hasHelp) {
+    console.log('Usage: npm start [options]');
+    console.log('Options:');
+    console.log('  help     Show help');
+    console.log('  iterative    Iterative mode');
+    console.log('  no-send-email    No send email');
+    console.log('  date=YYYY-MM-DD    Search for a specific date');
+    return;
+  }
 
   await printSentence('\tSISTEMA DE MONITORAMENTO DE PUBLICAÇÕES DO MEIO AMBIENTE\n\n', iterativeMode);
   await printSentence(`\tBUSCANDO PUBLICAÇÕES DO DIA [${today}]\n\n`, iterativeMode);
