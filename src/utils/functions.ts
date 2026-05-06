@@ -115,9 +115,9 @@ export async function sendEmail(
   if (emailType === 'client') {
     text =
       `Olá, ${client.name}!\n\n
-    No acompanhamento que realizamos das publicações oficiais, identificamos uma atualização sobre o seu processo
-    de outorga.\n\n
-    A publicação indica ${getUserFriendlyResult(result)} do processo, e por isso já quisemos te avisar.\n\n
+    No acompanhamento que realizamos das publicações oficiais, identificamos uma atualização 
+    ${isOutorga ? 'sobre o seu processo de outorga' : 'que menciona seu CPF/CNPJ'}.\n\n
+    ${isOutorga ? `A publicação indica ${getUserFriendlyResult(result)} do processo, e por isso já quisemos te avisar.\n\n` : ''}
     Órgão / seção: ${dept}\n\n
     Título da publicação:\n${title}\n\n
     Trecho do texto oficial:\n
@@ -163,9 +163,10 @@ export async function sendEmail(
             <tr>
               <td style="padding:24px 28px 32px 28px;font-family:'Open Sans',Arial;">
                 <p style="margin:0 0 1em 0;">Olá, ${escapeHtml(client.name)}!</p>
-                <p style="margin:0 0 1em 0;">No acompanhamento que realizamos das publicações oficiais, identificamos
-                  uma <strong>atualização</strong> sobre o seu processo de outorga. A publicação indica
-                  <strong>${getUserFriendlyResult(result)}</strong> do processo, e por isso já quisemos te avisar.</p>
+                <p style="margin:0 0 1em 0;">No acompanhamento que realizamos das publicações oficiais, identificamos uma <strong>atualização</strong>
+                  ${isOutorga ? 'sobre o seu processo de outorga' : 'que menciona seu CPF/CNPJ'}.
+                  ${isOutorga ? `A publicação indica <strong>${getUserFriendlyResult(result)}</strong> do processo, e por isso já quisemos te avisar.\n\n` : ''}
+                </p>
                 <p style="margin:0 0 1em 0;"><strong>Órgão / seção:</strong> ${escapeHtml(dept)}</p>
                 <p style="margin:0 0 0.35em 0;"><strong>Título da publicação</strong></p>
                 <p style="margin:0 0 1em 0;">${safeTitle}</p>
@@ -203,10 +204,13 @@ export async function sendEmail(
     text =
       `Olá, ${client.name}!\n\n
     Esperamos que esteja tudo bem por aí.\n\n
-    No monitoramento que realizamos das publicações oficiais, identificamos uma atualização envolvendo processo
-    de outorga relacionado à sua empresa.\n\n
-    A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação
-    de forma objetiva para apoiar sua leitura inicial.\n\n
+    No monitoramento que realizamos das publicações oficiais, identificamos uma atualização
+    ${isOutorga ? 'envolvendo processo de outorga relacionado à sua empresa' : 'que menciona seu CPF/CNPJ'}.\n\n
+    ${
+      isOutorga
+        ? `A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação de forma objetiva para apoiar sua leitura inicial.\n\n`
+        : ''
+    }
     Órgão / seção: ${dept}\n\n
     Título da publicação:\n${title}\n\n
     Trecho do texto oficial:\n
@@ -252,10 +256,14 @@ export async function sendEmail(
                 <p style="margin:0 0 1em 0;">Olá, ${escapeHtml(client.name)}!</p>
                 <p style="margin:0 0 1em 0;">Esperamos que esteja tudo bem por aí.</p>
                 <p style="margin:0 0 1em 0;">No monitoramento que realizamos das publicações oficiais, identificamos
-                  uma atualização envolvendo processo de outorga relacionado à sua empresa.</p>
-                <p style="margin:0 0 1em 0;">A publicação indica
-                  <strong>${getUserFriendlyResult(result)}</strong> do processo, então decidimos compartilhar essa
-                  informação de forma objetiva para apoiar sua leitura inicial.</p>
+                  uma atualização
+                  ${isOutorga ? 'envolvendo processo de outorga relacionado à sua empresa' : 'que menciona seu CPF/CNPJ'}.
+                  ${
+                    isOutorga
+                      ? `A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação de forma objetiva para apoiar sua leitura inicial.\n\n`
+                      : ''
+                  }
+                  </p>
                 <p style="margin:0 0 1em 0;"><strong>Órgão / seção:</strong> ${escapeHtml(dept)}</p>
                 <p style="margin:0 0 0.35em 0;"><strong>Título da publicação</strong></p>
                 <p style="margin:0 0 1em 0;">${safeTitle}</p>
@@ -295,10 +303,10 @@ export async function sendEmail(
   const subjectRandom = Math.floor(Math.random() * 3);
   const subject =
     subjectRandom === 0
-      ? `${getUserFriendlyResult(result, true)} de outorga`
+      ? `${isOutorga ? `${getUserFriendlyResult(result, true)} de outorga` : 'Menção ao seu CPF/CNPJ no Diário Oficial'}`
       : subjectRandom === 1
-        ? `[${getUserFriendlyResult(result, true)}] de outorga`
-        : `${getUserFriendlyResult(result, true)} de outorga - ${dept}`;
+        ? `[${isOutorga ? `${getUserFriendlyResult(result, true)} de outorga` : `[Atualização] Sobre seu processo no departamento de ${dept}`}]`
+        : `${isOutorga ? `${getUserFriendlyResult(result, true)} de outorga` : 'Meio Ambiente, Atualização sobre seu processo!'}`;
   const bccEmail = BCC_EMAIL?.trim() || '';
   const bcc = emailType === 'client' ? [bccEmail, replyEmail] : [bccEmail];
   const mail: SendMailOptions = {
