@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import nodemailer, { SendMailOptions } from 'nodemailer';
+import { exec } from 'child_process';
 
 dotenv.config({ debug: false, quiet: true });
 
@@ -54,6 +55,7 @@ interface Publication {
   slug: string;
   departmentName: string;
   isOutorga: boolean;
+  content?: string;
 }
 
 interface PublicationResponse {
@@ -430,7 +432,8 @@ async function main() {
   const noSendEmail = args.some(arg => arg === 'no-send-email');
   const dateParam = args.find(arg => arg.startsWith('date='))?.split('=')[1];
   const date = dateParam ? new Date(dateParam) : new Date();
-  const today = date.toISOString().split('T')[0]?.replace(/-0/g, '-');
+  const todayDomg = date.toISOString().split('T')[0];
+  const today = todayDomg?.replace(/-0/g, '-');
 
   await printSentence('\tSISTEMA DE MONITORAMENTO DE OUTORGA DO MEIO AMBIENTE\n\n', iterativeMode);
   await printSentence(`\tBUSCANDO OUTORGA DO DIA [${today}]\n\n`, iterativeMode);
@@ -482,7 +485,26 @@ async function main() {
   }
   await printSentence(`\t[${doPublications?.length || 0}] PUBLICAÇÕES ENCONTRADAS [SP]\n\n`, iterativeMode);
 
-  // TODO: Get publications from MG state
+  const domgData: string | null = await new Promise<string>((resolve, reject) => {
+    exec(`bash ./src/domg.sh ${todayDomg}`, (error, stdout, stderr) => {
+      if (error) {
+        console.log(`Error executing domg.sh: ${error}`);
+        reject(null);
+      }
+      resolve(stdout);
+    });
+  });
+
+  if (domgData) {
+    await printSentence(`\t[1] PUBLICAÇÃO ENCONTRADA [MG]\n\n`, iterativeMode);
+    doPublications.push({
+      title: 'Publicação do Diário Oficial de MG do dia ' + todayDomg.split('-').reverse().join('/'),
+      slug: 'https://www.jornalminasgerais.mg.gov.br/edicao-do-dia',
+      departmentName: 'Meio Ambiente',
+      isOutorga: false,
+      content: domgData,
+    });
+  }
 
   for (const publication of doPublications) {
     let paragraphs: string[] = [];
@@ -511,8 +533,13 @@ async function main() {
       paragraphs = $('p')
         .map((_, element) => $(element).text())
         .get();
-    } else {
-      //TODO: Get paragraphs from MG state
+    } else if (publication?.content) {
+      const rawParagraphs = publication?.content?.split('\n') || [];
+      paragraphs = [];
+      for (let i = 0; i < rawParagraphs.length; i += 3) {
+        const group = rawParagraphs.slice(i, i + 3).join(' ');
+        paragraphs.push(group);
+      }
     }
 
     for (const paragraph of paragraphs) {
@@ -539,10 +566,7 @@ async function main() {
 
         const result = determineGrantedResult(paragraph);
         const webUrl = `https://doe.sp.gov.br/${publication?.slug}`;
-        await printSentence(
-          `\tCLIENTE [${client.name}] encontrado na publicação, resultado: [${result.toUpperCase()}]\n\n`,
-          iterativeMode,
-        );
+        await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
         if (!noSendEmail) {
           if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
             await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
