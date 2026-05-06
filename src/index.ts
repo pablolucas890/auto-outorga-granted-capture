@@ -90,13 +90,17 @@ async function main() {
   await printSentence(`\t[${doPublications?.length || 0}] PUBLICAÇÕES DE OUTORGA ENCONTRADAS [SP]\n\n`, iterativeMode);
 
   // Get publication from DO of MG
-  const domgData: string | null = await new Promise<string>((resolve, reject) => {
+  const domgData: string = await new Promise<string>((resolve, reject) => {
     exec(`bash ./src/domg.sh ${todayDomg}`, (error, stdout, stderr) => {
-      if (error) {
-        console.log(`Error executing domg.sh: ${error}`);
-        reject(null);
+      if (error || stderr) {
+        console.log(`Error executing domg.sh: ${error || stderr}`);
+        resolve('');
       }
-      resolve(stdout);
+      if (stdout != null && stdout !== '') {
+        resolve(stdout);
+      } else {
+        resolve('');
+      }
     });
   });
 
