@@ -3,6 +3,17 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import nodemailer, { SendMailOptions } from 'nodemailer';
 import { exec } from 'child_process';
+import {
+  ClientOrLead,
+  EmailType,
+  GrantedResult,
+  PublicationResponse,
+  Transport,
+  Act,
+  Child,
+  Company,
+  Publication,
+} from './types';
 
 dotenv.config({ debug: false, quiet: true });
 
@@ -33,59 +44,6 @@ const COLOR_BLACK = '#000000';
 const CNPJ_REGEX = /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$/;
 const LIMIT_OF_DISPATCH_EMAILS = 5;
 const TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S = 48;
-
-type GrantedResult = 'granted' | 'rejected' | 'unknown';
-type EmailType = 'client' | 'lead';
-
-interface Company {
-  cnpj: string;
-  paragraph: string;
-  publication: Publication;
-}
-
-interface ClientOrLead {
-  name: string;
-  cnpj: string;
-  cpf: string;
-  email: string | null;
-}
-
-interface Publication {
-  title: string;
-  slug: string;
-  departmentName: string;
-  isOutorga: boolean;
-  content?: string;
-}
-
-interface PublicationResponse {
-  content: string;
-}
-
-interface Act {
-  name: string;
-  children: Child[];
-}
-
-interface Child {
-  name: string;
-  children: Child[];
-  publications: Publication[];
-}
-
-interface Transport {
-  host: string;
-  port: number;
-  secure: boolean;
-  logger?: boolean;
-  debug?: boolean;
-  name?: string;
-  from?: string;
-  auth: {
-    user: string;
-    pass: string;
-  };
-}
 
 function escapeHtml(text: string) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
