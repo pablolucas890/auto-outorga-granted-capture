@@ -39,7 +39,7 @@ type EmailType = 'client' | 'lead';
 interface Company {
   cnpj: string;
   paragraph: string;
-  outorga: Outorga;
+  publication: Publication;
 }
 
 interface ClientOrLead {
@@ -49,20 +49,15 @@ interface ClientOrLead {
   email: string | null;
 }
 
-interface Outorga {
-  title: string;
-  slug: string;
-  departmentName: string;
-}
-
-interface PublicationResponse {
-  content: string;
-}
-
 interface Publication {
   title: string;
   slug: string;
   departmentName: string;
+  isOutorga: boolean;
+}
+
+interface PublicationResponse {
+  content: string;
 }
 
 interface Act {
@@ -149,6 +144,7 @@ async function sendEmail(
   departmentName: string,
   result: GrantedResult,
   emailType: EmailType,
+  isOutorga: boolean,
 ) {
   const {
     SMTP_HOST,
@@ -425,7 +421,9 @@ function determineGrantedResult(paragraph: string): GrantedResult {
 async function main() {
   let dispatchEmailCount = 0;
   let data = null;
+  let acts: Act[] = [];
   let companiesArray: Company[] = [];
+  let doPublications: Publication[] = [];
 
   const args = process.argv.slice(2);
   const iterativeMode = args.some(arg => arg === 'iterative');
@@ -449,28 +447,14 @@ async function main() {
     return;
   }
 
-  if (!data) {
-    console.log('No data received');
-    return;
+  if (data) {
+    acts = (data as { items: Act[] })?.items;
   }
-
-  const acts = (data as { items: Act[] })?.items;
-  if (!acts || acts?.length === 0 || !acts[0]?.children || acts[0]?.children?.length === 0) {
-    console.log('No acts received');
-    return;
-  }
-
   const environment = acts[0]?.children.find(child => child?.name?.toLowerCase().includes('meio ambiente'));
-  if (!environment || !environment?.children || environment?.children?.length === 0) {
-    console.log('No environment found');
-    return;
-  }
   await printSentence(
-    `\t[${environment?.children?.length}] DEPARTAMENTOS ENCONTRADOS NO MEIO AMBIENTE\n\n`,
+    `\t[${environment?.children?.length || 0}] DEPARTAMENTOS ENCONTRADOS NO MEIO AMBIENTE [SP]\n\n`,
     iterativeMode,
   );
-
-  let outorgas: Outorga[] = [];
   for (const department of environment?.children || []) {
     const departmentName = department?.name;
     const children = department?.children as Child[];
@@ -480,49 +464,56 @@ async function main() {
         if (childPublications && childPublications?.length > 0) {
           for (const publication of childPublications) {
             if (publication?.title?.toLowerCase().includes('outorga')) {
-              outorgas.push({ ...publication, departmentName });
+              doPublications.push({ ...publication, departmentName, isOutorga: true });
             }
           }
         }
       }
     }
-    const publications = department?.publications;
-    if (!publications || publications?.length === 0) {
+    const dptPublications = department?.publications;
+    if (!dptPublications || dptPublications?.length === 0) {
       continue;
     }
-    for (const publication of publications) {
-      if (publication?.title?.toLowerCase().includes('outorga')) {
-        outorgas.push({ ...publication, departmentName });
+    for (const dptPublication of dptPublications) {
+      if (dptPublication?.title?.toLowerCase().includes('outorga')) {
+        doPublications.push({ ...dptPublication, departmentName, isOutorga: true });
       }
     }
   }
-  await printSentence(`\t[${outorgas?.length}] PUBLICAÇÕES COM OUTORGA ENCONTRADAS\n\n`, iterativeMode);
+  await printSentence(`\t[${doPublications?.length || 0}] PUBLICAÇÕES ENCONTRADAS [SP]\n\n`, iterativeMode);
 
-  for (const outorga of outorgas) {
-    const outorgaURL = `https://do-api-web-search.doe.sp.gov.br/v2/publications/${outorga?.slug}`;
-    let data: PublicationResponse | null = null;
-    try {
-      const response = await fetch(outorgaURL, { headers: HEADERS });
-      if (!response.ok) {
-        console.log(`HTTP error! status: ${response.status}`);
+  // TODO: Get publications from MG state
+
+  for (const publication of doPublications) {
+    let paragraphs: string[] = [];
+    if (publication?.isOutorga) {
+      const outorgaURL = `https://do-api-web-search.doe.sp.gov.br/v2/publications/${publication?.slug}`;
+      let data: PublicationResponse | null = null;
+      try {
+        const response = await fetch(outorgaURL, { headers: HEADERS });
+        if (!response.ok) {
+          console.log(`HTTP error! status: ${response.status}`);
+          continue;
+        }
+        data = await response.json();
+      } catch (error) {
+        console.log('Error:', error);
         continue;
       }
-      data = await response.json();
-    } catch (error) {
-      console.log('Error:', error);
-      continue;
-    }
 
-    if (!data || !data?.content) {
-      console.log('No data received');
-      continue;
-    }
+      if (!data || !data?.content) {
+        console.log('No data received');
+        continue;
+      }
 
-    const outorgaContent = data?.content;
-    const $ = cheerio.load(outorgaContent);
-    const paragraphs = $('p')
-      .map((_, element) => $(element).text())
-      .get();
+      const outorgaContent = data?.content;
+      const $ = cheerio.load(outorgaContent);
+      paragraphs = $('p')
+        .map((_, element) => $(element).text())
+        .get();
+    } else {
+      //TODO: Get paragraphs from MG state
+    }
 
     for (const paragraph of paragraphs) {
       for (const firstSentenceSplited of paragraph.split(' ')) {
@@ -531,7 +522,7 @@ async function main() {
           const cnpj = word.match(CNPJ_REGEX);
           if (cnpj) {
             if (!companiesArray.find(company => company.cnpj === cnpj[0])) {
-              companiesArray.push({ cnpj: cnpj[0], paragraph: paragraph, outorga: outorga });
+              companiesArray.push({ cnpj: cnpj[0], paragraph: paragraph, publication });
             }
           }
         }
@@ -547,10 +538,11 @@ async function main() {
         }
 
         const result = determineGrantedResult(paragraph);
-        await printSentence(`\tRESULTADO DA OUTORGA: [${result.toUpperCase()}]\n\n`, iterativeMode);
-
-        const webUrl = `https://doe.sp.gov.br/${outorga?.slug}`;
-        await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
+        const webUrl = `https://doe.sp.gov.br/${publication?.slug}`;
+        await printSentence(
+          `\tCLIENTE [${client.name}] encontrado na publicação, resultado: [${result.toUpperCase()}]\n\n`,
+          iterativeMode,
+        );
         if (!noSendEmail) {
           if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
             await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
@@ -561,14 +553,21 @@ async function main() {
             iterativeMode,
           );
           try {
-            await sendEmail(client, outorga?.title, paragraph, webUrl, outorga?.departmentName, result, 'client');
+            await sendEmail(
+              client,
+              publication?.title,
+              paragraph,
+              webUrl,
+              publication?.departmentName,
+              result,
+              'client',
+              publication?.isOutorga,
+            );
             dispatchEmailCount++;
           } catch (error) {
             console.log('Error sending email:', error);
             continue;
           }
-        } else {
-          await printSentence(paragraph, iterativeMode);
         }
       }
     }
@@ -623,12 +622,13 @@ async function main() {
             );
             await sendEmail(
               lead,
-              company.outorga.title,
+              company.publication.title,
               company.paragraph,
-              company.outorga.slug,
-              company.outorga.departmentName,
+              company.publication.slug,
+              company.publication.departmentName,
               grantedResult,
               'lead',
+              company.publication.isOutorga,
             );
             dispatchEmailCount++;
             await new Promise(resolve => setTimeout(resolve, TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S * 1000));
