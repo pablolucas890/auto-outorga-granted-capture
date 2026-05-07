@@ -237,6 +237,7 @@ async function main() {
         const email = $('span[itemprop="email"]').text();
         const legalName = $('span[itemprop="legalName"]').text();
         const addressLocality = $('span[itemprop="addressLocality"]').text();
+        const addressRegion = $('span[itemprop="addressRegion"]').text();
         const localityNorm = removeAccents(addressLocality ?? '').toLowerCase();
         const isSelectedCity = SELECTED_CITIES.some(city => localityNorm === removeAccents(city).toLowerCase());
         const isClient = CLIENTS.find(client => client.cnpj === company.cnpj || client.email === email);
@@ -250,7 +251,7 @@ async function main() {
               break;
             }
             await printSentence(
-              `\tDISPARANDO EMAIL PARA A EMPRESA [${legalName}] [${email}] [${addressLocality}]\n\n`,
+              `\tDISPARANDO EMAIL PARA A EMPRESA [${legalName}] [${email}] [${addressLocality}] [${addressRegion}]\n\n`,
               iterativeMode,
             );
             await sendEmail(
@@ -267,7 +268,7 @@ async function main() {
             await new Promise(resolve => setTimeout(resolve, TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S * 1000));
           } else {
             await printSentence(
-              `\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}] [${addressLocality}]\n\n`,
+              `\tLEAD ENCONTRADO PARA A EMPRESA [${legalName}] [${email}] [${addressLocality}] [${addressRegion}]\n\n`,
               iterativeMode,
             );
           }
