@@ -319,10 +319,11 @@ export async function sendEmail(
     html,
   };
 
+  const port = SMTP_PORT ? parseInt(SMTP_PORT) : 587;
   const transportOptions: Transport = {
     host: SMTP_HOST || '',
-    port: SMTP_PORT ? parseInt(SMTP_PORT) : 0,
-    secure: true,
+    port,
+    secure: port === 465,
     auth: { user: SMTP_USER || '', pass: SMTP_PASSWORD || '' },
     logger: false,
     debug: false,

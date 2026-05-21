@@ -18,6 +18,7 @@ async function main() {
   let acts: Act[] = [];
   let companiesArray: Company[] = [];
   let doPublications: Publication[] = [];
+  const sentEmails = new Set<string>();
 
   const args = process.argv.slice(2);
   const hasHelp = args.some(arg => arg === 'help');
@@ -176,6 +177,10 @@ async function main() {
         const result = determineGrantedResult(paragraph);
         const webUrl = `https://doe.sp.gov.br/${publication?.slug}`;
         await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
+        if (sentEmails.has(client.email)) {
+          await printSentence(`\tEMAIL [${client.email}] já enviado, ignorando duplicata\n\n`, iterativeMode);
+          continue;
+        }
         if (!noSendEmail) {
           if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
             await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
@@ -196,6 +201,7 @@ async function main() {
               'client',
               publication?.isOutorga,
             );
+            sentEmails.add(client.email);
             dispatchEmailCount++;
           } catch (error) {
             console.log('Error sending email:', error);
@@ -243,6 +249,9 @@ async function main() {
         const isClient = CLIENTS.find(client => client.cnpj === company.cnpj || client.email === email);
 
         if (email && legalName && !isClient && localityNorm && isSelectedCity) {
+          if (sentEmails.has(email)) {
+            continue;
+          }
           const grantedResult = determineGrantedResult(company.paragraph);
           const lead: ClientOrLead = { name: legalName, cnpj: company.cnpj, cpf: '', email: email };
           if (!noSendEmail) {
@@ -264,6 +273,7 @@ async function main() {
               'lead',
               company.publication.isOutorga,
             );
+            sentEmails.add(email);
             dispatchEmailCount++;
             await new Promise(resolve => setTimeout(resolve, TIMEOUT_BETWEEN_MAIL_DISPATCH_IN_S * 1000));
           } else {
