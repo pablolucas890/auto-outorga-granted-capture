@@ -254,6 +254,7 @@ async function main() {
           }
           const grantedResult = determineGrantedResult(company.paragraph);
           const lead: ClientOrLead = { name: legalName, cnpj: company.cnpj, cpf: '', email: email };
+          const webUrl = `https://doe.sp.gov.br/${company.publication?.slug}`;
           if (!noSendEmail) {
             if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
               await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
@@ -267,7 +268,7 @@ async function main() {
               lead,
               company.publication.title,
               company.paragraph,
-              company.publication.slug,
+              webUrl,
               company.publication.departmentName,
               grantedResult,
               'lead',
