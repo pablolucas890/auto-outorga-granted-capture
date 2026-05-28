@@ -1,4 +1,4 @@
-import { ClientOrLead, EmailType, GrantedResult, Transport } from '../types';
+import { ClientOrLead, EmailType, GrantedResult, PublicationState, Transport } from '../types';
 import nodemailer, { SendMailOptions } from 'nodemailer';
 import dotenv from 'dotenv';
 import { COLOR_BLACK, COLOR_WHITE, WAIT_TIME_BETWEEN_SENTENCES, WAIT_TIME_BETWEEN_WORDS } from './constants';
@@ -64,7 +64,6 @@ export async function sendEmail(
   departmentName: string,
   result: GrantedResult,
   emailType: EmailType,
-  isOutorga: boolean,
 ) {
   const {
     SMTP_HOST,
@@ -116,8 +115,8 @@ export async function sendEmail(
     text =
       `Olá, ${client.name}!\n\n
     No acompanhamento que realizamos das publicações oficiais, identificamos uma atualização 
-    ${isOutorga ? 'sobre o seu processo de outorga' : 'que menciona seu CPF/CNPJ'}.\n\n
-    ${isOutorga ? `A publicação indica ${getUserFriendlyResult(result)} do processo, e por isso já quisemos te avisar.\n\n` : ''}
+    sobre o seu processo de outorga.\n\n
+    A publicação indica ${getUserFriendlyResult(result)} do processo, e por isso já quisemos te avisar.\n\n
     Órgão / seção: ${dept}\n\n
     Título da publicação:\n${title}\n\n
     Trecho do texto oficial:\n
@@ -164,8 +163,8 @@ export async function sendEmail(
               <td style="padding:24px 28px 32px 28px;font-family:'Open Sans',Arial;">
                 <p style="margin:0 0 1em 0;">Olá, ${escapeHtml(client.name)}!</p>
                 <p style="margin:0 0 1em 0;">No acompanhamento que realizamos das publicações oficiais, identificamos uma <strong>atualização</strong>
-                  ${isOutorga ? 'sobre o seu processo de outorga' : 'que menciona seu CPF/CNPJ'}.
-                  ${isOutorga ? `A publicação indica <strong>${getUserFriendlyResult(result)}</strong> do processo, e por isso já quisemos te avisar.\n\n` : ''}
+                  sobre o seu processo de outorga.
+                  A publicação indica <strong>${getUserFriendlyResult(result)}</strong> do processo, e por isso já quisemos te avisar.\n\n
                 </p>
                 <p style="margin:0 0 1em 0;"><strong>Órgão / seção:</strong> ${escapeHtml(dept)}</p>
                 <p style="margin:0 0 0.35em 0;"><strong>Título da publicação</strong></p>
@@ -205,12 +204,8 @@ export async function sendEmail(
       `Olá, ${client.name}!\n\n
     Esperamos que esteja tudo bem por aí.\n\n
     No monitoramento que realizamos das publicações oficiais, identificamos uma atualização
-    ${isOutorga ? 'envolvendo processo de outorga relacionado à sua empresa' : 'que menciona seu CPF/CNPJ'}.\n\n
-    ${
-      isOutorga
-        ? `A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação de forma objetiva para apoiar sua leitura inicial.\n\n`
-        : ''
-    }
+    envolvendo processo de outorga relacionado à sua empresa.\n\n
+    A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação de forma objetiva para apoiar sua leitura inicial.\n\n
     Órgão / seção: ${dept}\n\n
     Título da publicação:\n${title}\n\n
     Trecho do texto oficial:\n
@@ -256,13 +251,8 @@ export async function sendEmail(
                 <p style="margin:0 0 1em 0;">Olá, ${escapeHtml(client.name)}!</p>
                 <p style="margin:0 0 1em 0;">Esperamos que esteja tudo bem por aí.</p>
                 <p style="margin:0 0 1em 0;">No monitoramento que realizamos das publicações oficiais, identificamos
-                  uma atualização
-                  ${isOutorga ? 'envolvendo processo de outorga relacionado à sua empresa' : 'que menciona seu CPF/CNPJ'}.
-                  ${
-                    isOutorga
-                      ? `A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação de forma objetiva para apoiar sua leitura inicial.\n\n`
-                      : ''
-                  }
+                  uma atualização envolvendo processo de outorga relacionado à sua empresa.
+                  A publicação indica ${getUserFriendlyResult(result)} do processo, então decidimos compartilhar essa informação de forma objetiva para apoiar sua leitura inicial.\n\n
                   </p>
                 <p style="margin:0 0 1em 0;"><strong>Órgão / seção:</strong> ${escapeHtml(dept)}</p>
                 <p style="margin:0 0 0.35em 0;"><strong>Título da publicação</strong></p>
@@ -303,10 +293,10 @@ export async function sendEmail(
   const subjectRandom = Math.floor(Math.random() * 3);
   const subject =
     subjectRandom === 0
-      ? `${isOutorga ? `${getUserFriendlyResult(result, true)} de outorga` : 'Menção ao seu CPF/CNPJ no Diário Oficial'}`
+      ? `${getUserFriendlyResult(result, true)} de outorga`
       : subjectRandom === 1
-        ? `[${isOutorga ? `${getUserFriendlyResult(result, true)} de outorga` : `[Atualização] Sobre seu processo no departamento de ${dept}`}]`
-        : `${isOutorga ? `${getUserFriendlyResult(result, true)} de outorga` : 'Meio Ambiente, Atualização sobre seu processo!'}`;
+        ? `[${getUserFriendlyResult(result, true)} de outorga]`
+        : `${getUserFriendlyResult(result, true)} de outorga — ${dept}`;
   const bccEmail = BCC_EMAIL?.trim() || '';
   const bcc = emailType === 'client' ? [bccEmail, replyEmail] : [bccEmail];
   const mail: SendMailOptions = {
@@ -338,10 +328,24 @@ export async function sendEmail(
   }
 }
 
-export function determineGrantedResult(paragraph: string): GrantedResult {
+export function determineGrantedResult(paragraph: string, state: PublicationState = 'SP'): GrantedResult {
+  if (state === 'MG') {
+    const text = removeAccents(paragraph).toLowerCase();
+
+    if (text.includes('indeferido') || text.includes('cancela-se a portaria')) {
+      return 'rejected';
+    }
+    if (text.includes('deferido')) {
+      return 'granted';
+    }
+
+    return 'unknown';
+  }
+
   if (paragraph.includes('Fica outorgada')) {
     return 'granted';
-  } else if (paragraph.includes('Fica revogada')) {
+  }
+  if (paragraph.includes('Fica revogada')) {
     return 'rejected';
   }
   return 'unknown';
