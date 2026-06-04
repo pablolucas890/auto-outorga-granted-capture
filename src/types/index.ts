@@ -1,5 +1,6 @@
 export type GrantedResult = 'granted' | 'rejected' | 'unknown';
 export type EmailType = 'client' | 'lead';
+export type PublicationState = 'SP' | 'MG';
 
 export interface Company {
   cnpj: string;
@@ -18,7 +19,7 @@ export interface Publication {
   title: string;
   slug: string;
   departmentName: string;
-  isOutorga: boolean;
+  state: PublicationState;
   content?: string;
 }
 

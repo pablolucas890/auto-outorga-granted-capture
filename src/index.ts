@@ -70,7 +70,7 @@ async function main() {
         if (childPublications && childPublications?.length > 0) {
           for (const publication of childPublications) {
             if (publication?.title?.toLowerCase().includes('outorga')) {
-              doPublications.push({ ...publication, departmentName, isOutorga: true });
+              doPublications.push({ ...publication, departmentName, state: 'SP' });
             }
           }
         }
@@ -84,7 +84,7 @@ async function main() {
 
     for (const dptPublication of dptPublications) {
       if (dptPublication?.title?.toLowerCase().includes('outorga')) {
-        doPublications.push({ ...dptPublication, departmentName, isOutorga: true });
+        doPublications.push({ ...dptPublication, departmentName, state: 'SP' });
       }
     }
   }
@@ -111,14 +111,17 @@ async function main() {
       title: 'Publicação do Diário Oficial de MG do dia ' + todayDomg.split('-').reverse().join('/'),
       slug: 'https://www.jornalminasgerais.mg.gov.br/edicao-do-dia',
       departmentName: 'Meio Ambiente',
-      isOutorga: false,
+      state: 'MG',
       content: domgData,
     });
   }
 
   for (const publication of doPublications) {
     let paragraphs: string[] = [];
-    if (publication?.isOutorga) {
+    const publicationUrl =
+      publication.state === 'MG' ? publication.slug : `https://doe.sp.gov.br/${publication.slug}`;
+
+    if (publication.state === 'SP') {
       const outorgaURL = `https://do-api-web-search.doe.sp.gov.br/v2/publications/${publication?.slug}`;
       let data: PublicationResponse | null = null;
       try {
@@ -144,11 +147,28 @@ async function main() {
         .map((_, element) => $(element).text())
         .get();
     } else if (publication?.content) {
-      const rawParagraphs = publication?.content?.split('\n') || [];
-      paragraphs = [];
-      for (let i = 0; i < rawParagraphs.length; i += 3) {
-        const group = rawParagraphs.slice(i, i + 3).join(' ');
-        paragraphs.push(group);
+      const content = publication.content;
+      const processChunks = content
+        .split(/(?=\*Processo\s*n[º°o]?\s*\d)/i)
+        .map(chunk => chunk.trim())
+        .filter(chunk => chunk.length > 0);
+
+      if (processChunks.length > 1) {
+        paragraphs = processChunks.filter(chunk =>
+          removeAccents(chunk).toLowerCase().includes('outorga de direito de uso'),
+        );
+      } else {
+        const rawParagraphs = content.split('\n') || [];
+        paragraphs = [];
+        for (let i = 0; i < rawParagraphs.length; i += 3) {
+          const group = rawParagraphs.slice(i, i + 3).join(' ');
+          const lowerCaseParagraph = removeAccents(group).toLowerCase();
+          if (!lowerCaseParagraph.includes('outorga de direito de uso')) {
+            continue;
+          }
+          paragraphs.push(group);
+        }
+        paragraphs = paragraphs.filter(paragraph => paragraph.trim());
       }
     }
 
@@ -174,8 +194,7 @@ async function main() {
           continue;
         }
 
-        const result = determineGrantedResult(paragraph);
-        const webUrl = `https://doe.sp.gov.br/${publication?.slug}`;
+        const result = determineGrantedResult(paragraph, publication.state);
         await printSentence(`\tCLIENTE [${client.name}] encontrado na publicação\n\n`, iterativeMode);
         if (sentEmails.has(client.email)) {
           await printSentence(`\tEMAIL [${client.email}] já enviado, ignorando duplicata\n\n`, iterativeMode);
@@ -195,11 +214,10 @@ async function main() {
               client,
               publication?.title,
               paragraph,
-              webUrl,
+              publicationUrl,
               publication?.departmentName,
               result,
               'client',
-              publication?.isOutorga,
             );
             sentEmails.add(client.email);
             dispatchEmailCount++;
@@ -252,9 +270,12 @@ async function main() {
           if (sentEmails.has(email)) {
             continue;
           }
-          const grantedResult = determineGrantedResult(company.paragraph);
+          const grantedResult = determineGrantedResult(company.paragraph, company.publication.state);
           const lead: ClientOrLead = { name: legalName, cnpj: company.cnpj, cpf: '', email: email };
-          const webUrl = `https://doe.sp.gov.br/${company.publication?.slug}`;
+          const companyPublicationUrl =
+            company.publication.state === 'MG'
+              ? company.publication.slug
+              : `https://doe.sp.gov.br/${company.publication.slug}`;
           if (!noSendEmail) {
             if (dispatchEmailCount >= LIMIT_OF_DISPATCH_EMAILS) {
               await printSentence(`\tLIMITE DE EMAILS DISPATCHADOS ATINGIDO\n\n`, iterativeMode);
@@ -268,11 +289,10 @@ async function main() {
               lead,
               company.publication.title,
               company.paragraph,
-              webUrl,
+              companyPublicationUrl,
               company.publication.departmentName,
               grantedResult,
               'lead',
-              company.publication.isOutorga,
             );
             sentEmails.add(email);
             dispatchEmailCount++;
